@@ -3,6 +3,7 @@ from fastapi import (
     HTTPException, 
     status, 
     Depends,  
+    Response
 )
 from datetime import timedelta
 from collections import defaultdict
@@ -157,7 +158,6 @@ async def create_lesson_block(
     else:
         await CoursePolicy.check_resource_access(current_user, course, "write")
     
-    # TODO: forbid passing object name if type is not video, image and others
     if block_data.type == LessonBlockType.TEXT:
         if not block_data.content.text:
             raise HTTPException(400, "Text content required")
@@ -196,10 +196,9 @@ async def create_lesson_block(
     return block
 
 
-@router.get("/{course_id}/module/{module_id}/lesson/{lesson_id}", response_model=SLessonFullReponse)
+@router.get("/{course_id}/lesson/{lesson_id}", response_model=SLessonFullReponse)
 async def get_lesson(
     course_id: int,
-    module_id: int,
     lesson_id: int,
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
@@ -207,7 +206,6 @@ async def get_lesson(
 ):
     
     course = await obj_exist_check.course_exists(course_id, db)
-    module = await obj_exist_check.module_exists(module_id, db)
     lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
     await CoursePolicy.check_resource_access(current_user, lesson, "read", course)
@@ -292,5 +290,31 @@ async def patch_lesson(
         )
 
 
+@router.delete("/{course_id}/lesson/{lesson_id}")
+async def delete_lesson(
+    course_id: int,
+    lesson_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db_session)
+):
+    course = await obj_exist_check.course_exists(course_id, db)
+    lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
+    await CoursePolicy.check_resource_access(current_user, lesson, "write", course)
+
+    try:
+        await db.delete(lesson)
+        await db.commit()
+
+    except SQLAlchemyError as e:
+        await db.rollback()
+        # logger.error(f"DB error deleting lesson {lesson_id}: {str(e)}")
+        raise HTTPException(500, "Ошибка базы данных")
+    
+    except Exception as e:
+        await db.rollback()
+        # logger.critical(f"Unexpected error: {traceback.format_exc()}")
+        raise HTTPException(500, "Internal server error")
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 

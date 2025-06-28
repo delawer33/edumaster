@@ -89,10 +89,10 @@ class Lesson(Base):
         back_populates="lessons",
     )
 
-
     blocks = relationship(
         "LessonBlock",
         back_populates="lesson",
+        cascade="all, delete-orphan"
     )
     
     

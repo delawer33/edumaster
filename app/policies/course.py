@@ -116,6 +116,7 @@ class CoursePolicy:
         # Определяем связанные объекты
         course = None
         module = None
+        print(type(resource))
         
         if isinstance(resource, Course):
             course = resource

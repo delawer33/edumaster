@@ -164,7 +164,7 @@ async def create_module(
     return module
 
 
-@router.patch("/{course_id}/module/{module_id}")
+@router.patch("/{course_id}/module/{module_id}", response_model=SModuleResponse)
 async def patch_module(
     course_id: int,
     module_id: int,
@@ -221,8 +221,9 @@ async def delete_module(
     course = await obj_exist_check.course_exists(course_id, db)
     module = await obj_exist_check.module_exists(module_id, db)
         
-    await CoursePolicy.check_single_course_access(course, current_user)
-    await CoursePolicy.check_module_belongs_course(module, course)
+    # await CoursePolicy.check_single_course_access(course, current_user)
+    # await CoursePolicy.check_module_belongs_course(module, course)
+    await CoursePolicy.check_resource_access(current_user, module, "write", course)
 
     await db.delete(module)
     await db.commit()

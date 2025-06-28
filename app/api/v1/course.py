@@ -8,7 +8,7 @@ from fastapi import (
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, or_, and_
+from sqlalchemy import select, update, or_, and_, exists
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
@@ -39,7 +39,7 @@ from app.dependencies import (
     get_current_user_teacher
 )
 from app.policies import CoursePolicy
-from app.helpers import obj_exist_check, module_lesson as module_lesson_helpers
+from app.helpers import obj_exist_check, module_lesson as module_lesson_helpers, course_queries_utils
 
 router = APIRouter(prefix="/course", tags=["Course"])
 
@@ -159,6 +159,12 @@ async def patch_course(
         await CoursePolicy.check_resource_access(current_user, course, "read")
         
         update_values = update_data.model_dump(exclude_unset=True)
+
+        is_archiving = update_values.get("status") == ObjectStatus.archived
+
+        if is_archiving and course.status != ObjectStatus.archived:
+            print("!!!")
+            await course_queries_utils.archive_children(db, course_id=course_id)
 
         await db.execute(
             update(Course)
@@ -376,12 +382,29 @@ async def get_non_archived_courses_with_archived_content(
     db: AsyncSession,
     current_user: User
 ) -> List[Course]:
+    """
+    Возвращает незаархивированные курсы, содержащие заархивированные модули или уроки
+    """
+    # Подзапрос для архивных модулей
+    archived_modules_subquery = exists().where(
+        (Module.course_id == Course.id) &
+        (Module.status == ObjectStatus.archived)
+    )
     
-    course_ids_query = select(Course.id).where(
-        Course.status != ObjectStatus.archived
-    ).distinct().where(
-        (Module.status == ObjectStatus.archived) |
+    # Подзапрос для архивных уроков
+    archived_lessons_subquery = exists().where(
+        (Lesson.course_id == Course.id) &
         (Lesson.status == ObjectStatus.archived)
+    )
+    
+    # Основной запрос
+    course_ids_query = select(Course.id).distinct().where(
+        Course.status != ObjectStatus.archived
+    ).where(
+        or_(
+            archived_modules_subquery,
+            archived_lessons_subquery
+        )
     )
     
     if current_user.role == UserRole.teacher:
@@ -393,6 +416,7 @@ async def get_non_archived_courses_with_archived_content(
     if not course_ids:
         return []
     
+    # Загружаем курсы с полной структурой
     courses_query = select(Course).where(
         Course.id.in_(course_ids)
     ).options(
