@@ -180,6 +180,12 @@ async def patch_module(
             
         await CoursePolicy.check_resource_access(current_user, module, "write", course)
 
+        if data.get("status") == ObjectStatus.published and course.status == ObjectStatus.draft:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Нельзя опубликовать модуль, т.к. неопубликован курс"
+            )
+
         is_archiving = update_data.get("status") == ObjectStatus.archived
         
         if is_archiving and module.status != ObjectStatus.archived:
@@ -220,6 +226,18 @@ async def delete_module(
 
     course = await obj_exist_check.course_exists(course_id, db)
     module = await obj_exist_check.module_exists(module_id, db)
+
+    if module.parent_module_id is not None:
+        parent_module = await db.execute(
+            select(Module).where(
+                Module.id == module.parent_module_id
+            ).options(
+                selectinload(Module.submodules)
+            )
+        )
+        parent_module = parent_module.scalars().first()
+        if len(parent_module.submodules) == 1:
+            parent_module.content_type == ModuleContentType.empty
         
     # await CoursePolicy.check_single_course_access(course, current_user)
     # await CoursePolicy.check_module_belongs_course(module, course)

@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import Course, Module, Lesson
+from app.db import Course, Module, Lesson, LessonBlock
 
 
 async def course_exists(
@@ -48,7 +48,7 @@ async def lesson_exists(
         lesson_id: int,
         db: AsyncSession
 ):
-    module = await db.scalar(
+    lesson = await db.scalar(
         select(Lesson).where(
             Lesson.id == lesson_id
         ).options(
@@ -57,11 +57,32 @@ async def lesson_exists(
         )
     )
 
-    if module is None:
+    if lesson is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Урок не найден"
         )
 
-    return module
+    return lesson
+
+
+async def lesson_block_exists(
+        block_id: int,
+        db: AsyncSession
+):
+    block = await db.scalar(
+        select(LessonBlock).where(
+            LessonBlock.id == block_id
+        ).options(
+            selectinload(LessonBlock.lesson)
+        )
+    )
+
+    if block is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Блок не найден"
+        )
+
+    return block
 

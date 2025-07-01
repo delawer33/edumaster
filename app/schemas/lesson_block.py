@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl, model_validator
+from pydantic import BaseModel, HttpUrl, model_validator,field_serializer
 
 from app.db import LessonBlockType
 
@@ -9,6 +9,10 @@ class TextContent(BaseModel):
 class UrlContent(BaseModel):
     url: HttpUrl
 
+    @field_serializer('url')
+    def serialize_url(self, url: HttpUrl) -> str:
+        return str(url)
+
 class ObjectContent(BaseModel):
     object_name: str
                 
@@ -16,7 +20,6 @@ class ObjectContent(BaseModel):
 class SLessonBlockCreate(BaseModel):
     type: LessonBlockType
     content: TextContent | UrlContent | ObjectContent
-    module_id: int | None = None
 
     @model_validator(mode='after')
     def validate_content_type(self):
@@ -37,6 +40,14 @@ class SLessonBlockCreate(BaseModel):
                 f"{expected_type.__name__}, передано {type(self.content).__name__}"
             )
         return self
+    
+    @field_serializer('content')
+    def serialize_content(self, content: TextContent | UrlContent | ObjectContent) -> str:
+        return content.model_dump_json() 
+
+
+class SLessonBlockPatch(SLessonBlockCreate):
+    pass
 
 
 class SLessonBlockResponse(BaseModel):

@@ -382,22 +382,16 @@ async def get_non_archived_courses_with_archived_content(
     db: AsyncSession,
     current_user: User
 ) -> List[Course]:
-    """
-    Возвращает незаархивированные курсы, содержащие заархивированные модули или уроки
-    """
-    # Подзапрос для архивных модулей
     archived_modules_subquery = exists().where(
         (Module.course_id == Course.id) &
         (Module.status == ObjectStatus.archived)
     )
     
-    # Подзапрос для архивных уроков
     archived_lessons_subquery = exists().where(
         (Lesson.course_id == Course.id) &
         (Lesson.status == ObjectStatus.archived)
     )
     
-    # Основной запрос
     course_ids_query = select(Course.id).distinct().where(
         Course.status != ObjectStatus.archived
     ).where(
@@ -416,7 +410,6 @@ async def get_non_archived_courses_with_archived_content(
     if not course_ids:
         return []
     
-    # Загружаем курсы с полной структурой
     courses_query = select(Course).where(
         Course.id.in_(course_ids)
     ).options(

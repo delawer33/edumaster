@@ -24,6 +24,7 @@ from app.schemas import (
     SLessonUpdate,
     SLessonBlockResponse,
     SLessonBlockCreate,
+    SLessonBlockPatch,
     build_module_tree_response
 )
 
@@ -138,25 +139,20 @@ async def create_lesson_block(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user)
 ):
-    module_id = block_data.module_id
-    
     lesson = await db.get(Lesson, lesson_id)
     
     if not lesson:
         raise HTTPException(404, "Lesson not found")
     
     course = await obj_exist_check.course_exists(course_id, db)
-    try:
-        module = await obj_exist_check.module_exists(module_id, db)
-    except HTTPException:
-        module = None
-    except Exception as e:
-        raise e
+    # try:
+    #     module = await obj_exist_check.module_exists(module_id, db)
+    # except HTTPException:
+    #     module = None
+    # except Exception as e:
+    #     raise e
 
-    if module:
-        await CoursePolicy.check_resource_access(current_user, module, "write", course)
-    else:
-        await CoursePolicy.check_resource_access(current_user, course, "write")
+    await CoursePolicy.check_resource_access(current_user, lesson, "write", course)
     
     if block_data.type == LessonBlockType.TEXT:
         if not block_data.content.text:
@@ -253,26 +249,45 @@ async def patch_lesson(
     if data.get("status") == ObjectStatus.published and lesson.module.status == ObjectStatus.draft:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Нельзя опубликовать курс, т.к. неопубликован модуль"
+            detail="Нельзя опубликовать урок, т.к. неопубликован модуль"
         )
 
     if module_id:
-        module = obj_exist_check.module_exists(module_id, db)
-        await CoursePolicy.check_module_belongs_course(module, course)
-        await CoursePolicy.check_lesson_belongs_module(lesson, module)
+        new_module = await obj_exist_check.module_exists(module_id, db)
+        if new_module.status == ObjectStatus.archived:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Модуль заархивирован"
+            )
+        await CoursePolicy.check_module_belongs_course(new_module, course)
 
-        # Если урок опубликован, а модуль, в который его перемещают в драфте
-        # if (data.get("status") == ObjectStatus.published \
-        #     or lesson.status == ObjectStatus.published) \
-        #         and module.status == ObjectStatus.draft:
+        # Если урок опубликован, а модуль, в который его перемещают - в драфте
+        if data.get("status") == ObjectStatus.published and new_module.status == ObjectStatus.draft:
             
-            # raise HTTPException(
-            #     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            #     detail="Нельзя переместить опубликованный урок в неопубликованный модуль"
-            # )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Нельзя переместить опубликованный урок в неопубликованный модуль"
+            )
         
-    else:
-        await CoursePolicy.check_lesson_belongs_course(lesson, course)
+        if lesson.module_id is not None:
+            module = await db.execute(
+                select(Module).where(
+                    Module.id == lesson.module_id
+                ).options(
+                    selectinload(Module.lessons)
+                )
+            )
+            module = module.scalars().first()
+            if len(module.lessons) == 1:
+                module.content_type = ModuleContentType.empty
+
+        if new_module.content_type == ModuleContentType.modules:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Модуль может состоять только из модулей, либо только из уроков"
+            )
+        elif new_module.content_type == ModuleContentType.empty:
+            new_module.content_type = ModuleContentType.lessons
     
     try:
         for key, value in data.items():
@@ -284,6 +299,40 @@ async def patch_lesson(
         return lesson
     
     except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    
+
+@router.patch("/{course_id}/lesson/{lesson_id}/block/{block_id}", response_model=SLessonBlockResponse)
+async def patch_lesson_block(
+    course_id: int,
+    lesson_id: int,
+    block_id: int,
+    block_data: SLessonBlockPatch,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db_session)
+):
+    course = await obj_exist_check.course_exists(course_id, db)
+    lesson = await obj_exist_check.lesson_exists(lesson_id, db)
+    block = await obj_exist_check.lesson_block_exists(block_id, db)
+    
+    await CoursePolicy.check_resource_access(current_user, lesson, "write", course)
+
+    data = block_data.model_dump(exclude_unset=True)
+
+    try:
+        for key, value in data.items():
+            setattr(block, key, value)
+
+        await db.commit()
+        await db.refresh(block)
+
+        return block
+    
+    except Exception as e:
+        raise e
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
