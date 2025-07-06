@@ -21,3 +21,13 @@ services:
     environment:
       - MINIO_ROOT_USER=minio
       - MINIO_ROOT_PASSWORD=minio_pwd
+  app:
+    build: .
+    command: python3 -m app.main
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+    depends_on:
+      - postgres
+      - minio
