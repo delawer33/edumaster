@@ -1,8 +1,9 @@
 from fastapi import HTTPException, status
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import User, Course, UserRole, ObjectStatus, Module, Lesson
+from app.db import User, Course, UserRole, ObjectStatus, Module, Lesson, CoursePurchase
+
 
 class CoursePolicy:
     @classmethod
@@ -101,19 +102,15 @@ class CoursePolicy:
     @classmethod
     async def check_resource_access(
         cls,
+        db: AsyncSession,
         user: User,
         resource: Course | Module | Lesson,
         action: str,  # "read" или "write"
-        preloaded_course: Course | None = None
+        preloaded_course: Course | None = None,
     ):
-        """
-        Проверяет доступ пользователя к ресурсу без дополнительных запросов к БД
-        """
-        # Админам разрешаем все действия
         if user.role == UserRole.admin:
             return True
 
-        # Определяем связанные объекты
         course = None
         module = None
         print(type(resource))
@@ -129,33 +126,27 @@ class CoursePolicy:
         else:
             raise ValueError("Неподдерживаемый тип ресурса")
 
-        # Проверяем доступ к курсу
         if not course:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Курс не найден"
             )
 
-        # Учитель может работать только со своими курсами
         is_owner = user.role == UserRole.teacher and course.owner_id == user.id
 
-        # Запись (изменение) разрешена только владельцу/админу
         if action == "write":
-            # Заархивированные курсы нельзя изменять
             if course.status == ObjectStatus.archived:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Курс заархивирован, изменения запрещены"
                 )
             
-            # Учитель может изменять только свои неархивные курсы
             if not is_owner:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Недостаточно прав для изменения"
                 )
             
-            # Дополнительные проверки для модулей/уроков
             if isinstance(resource, Module) and resource.status == ObjectStatus.archived:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -170,28 +161,35 @@ class CoursePolicy:
             
             return True
 
-        # Чтение разрешено:
         if action == "read":
-            # Для учителей/админов разрешаем чтение в любом статусе
             if is_owner or user.role == UserRole.admin:
                 return True
-            
-            # Для обычных пользователей:
-            # 1. Курс должен быть опубликован
+
+            stmt = select(CoursePurchase).where(
+                CoursePurchase.user_id == user.id
+            )
+
+            cp = await db.execute(stmt)
+
+            cp = cp.scalars().first()
+            if cp is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Курс не приобретен"
+                )
+                    
             if course.status != ObjectStatus.published:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Курс не опубликован"
                 )
             
-            # 2. Модуль должен быть опубликован (если есть)
             if module and module.status != ObjectStatus.published:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Модуль не опубликован"
                 )
             
-            # 3. Урок должен быть опубликован
             if isinstance(resource, Lesson) and resource.status != ObjectStatus.published:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,

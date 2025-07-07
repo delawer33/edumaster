@@ -43,7 +43,7 @@ async def get_module_content(
     course = await obj_exist_check.course_exists(course_id, db)
     module = await obj_exist_check.module_exists(module_id, db)
     
-    await CoursePolicy.check_resource_access(current_user, module, "read", course)
+    await CoursePolicy.check_resource_access(db, current_user, module, "read", course)
 
     all_modules = await db.scalars(
         select(Module)
@@ -101,7 +101,7 @@ async def create_module(
     course = await obj_exist_check.course_exists(course_id, db)
     
     if parent_module_id is None:
-        await CoursePolicy.check_resource_access(current_user, course, "write")
+        await CoursePolicy.check_resource_access(db, current_user, course, "write")
         lessons_in_course = await db.execute(
             select(Lesson).where(
                 Lesson.course_id == course_id
@@ -122,7 +122,7 @@ async def create_module(
     else:
         parent = await obj_exist_check.module_exists(parent_module_id, db)
 
-        await CoursePolicy.check_resource_access(current_user, parent, "write", course)
+        await CoursePolicy.check_resource_access(db, current_user, parent, "write", course)
 
         if parent.content_type == ModuleContentType.lessons:
             raise HTTPException(
@@ -178,7 +178,7 @@ async def patch_module(
         course = await obj_exist_check.course_exists(course_id, db)
         module = await obj_exist_check.module_exists(module_id, db)
             
-        await CoursePolicy.check_resource_access(current_user, module, "write", course)
+        await CoursePolicy.check_resource_access(db, current_user, module, "write", course)
 
         if data.get("status") == ObjectStatus.published and course.status == ObjectStatus.draft:
             raise HTTPException(
@@ -239,9 +239,7 @@ async def delete_module(
         if len(parent_module.submodules) == 1:
             parent_module.content_type == ModuleContentType.empty
         
-    # await CoursePolicy.check_single_course_access(course, current_user)
-    # await CoursePolicy.check_module_belongs_course(module, course)
-    await CoursePolicy.check_resource_access(current_user, module, "write", course)
+    await CoursePolicy.check_resource_access(db, current_user, module, "write", course)
 
     await db.delete(module)
     await db.commit()

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey
+from sqlalchemy import Integer, String, Float, Text, DateTime, ForeignKey
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 from sqlalchemy.dialects.postgresql import ENUM as Enum
 from datetime import datetime, timezone
@@ -73,5 +73,10 @@ class Course(Base):
         secondary="user_course",
         back_populates="courses",
         lazy="selectin"
+    )
+
+    purchases = relationship(
+        "CoursePurchase",
+        back_populates="course"
     )
 

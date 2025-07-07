@@ -25,13 +25,23 @@ class User(Base):
     role = Column(Enum(UserRole, name="user_role_enum"), default=UserRole.student, server_default="student", nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     courses = relationship("Course", back_populates="students", secondary="user_course")
+
+    purchases = relationship(
+        "CoursePurchase",
+        back_populates="user"
+    )
+
+    payments = relationship(
+        "PaymentTransaction",
+        back_populates="user"
+    )
 
     files = relationship("File", back_populates="owner")
 
     refresh_tokens = relationship(
-        "RefreshToken", 
+        "RefreshToken",
         back_populates="user",
         cascade="all, delete-orphan"
     )
