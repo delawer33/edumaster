@@ -14,8 +14,6 @@ from app.schemas import (
     SLessonResponse,
     SArchivedCourseResponse,
     SArchivedLessonResponse,
-    SCoursePaymentRequest,
-    SPaymentResponse,
     build_archived_module_tree,
     build_module_tree_response,
 )
@@ -34,15 +32,14 @@ from app.helpers import (
     obj_exist_check,
     module_lesson as module_lesson_helpers,
     course_queries_utils,
-    payments
 )
 
 router = APIRouter(prefix="/course", tags=["Course"])
 
 
 @router.get(
-    "/{course_id}/content/", 
-    response_model=list[SModuleTreeResponse | SLessonResponse]
+    "/{course_id}/content/",
+    response_model=list[SModuleTreeResponse | SLessonResponse],
 )
 async def get_course_content(
     course_id: int,
@@ -62,7 +59,7 @@ async def get_course_content(
     if is_teacher:
         module_query = module_query.where(
             Module.status != ObjectStatus.archived
-            )
+        )
     elif not is_admin:
         module_query = module_query.where(
             Module.status == ObjectStatus.published
@@ -124,9 +121,9 @@ async def get_course_content(
     return response_items
 
 
-@router.post("/", response_model=SCourseResponse,
-             status_code=status.HTTP_201_CREATED
-             )
+@router.post(
+    "/", response_model=SCourseResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_course(
     course_data: SCourseCreate,
     db: AsyncSession = Depends(get_async_db_session),
@@ -157,7 +154,9 @@ async def patch_course(
 
         course = await obj_exist_check.course_exists(course_id, db)
 
-        await CoursePolicy.check_resource_access(db, current_user, course, "read")
+        await CoursePolicy.check_resource_access(
+            db, current_user, course, "read"
+        )
 
         update_values = update_data.model_dump(exclude_unset=True)
 
@@ -165,14 +164,10 @@ async def patch_course(
 
         if is_archiving and course.status != ObjectStatus.archived:
             print("!!!")
-            await course_queries_utils.archive_children(
-                db, course_id=course_id
-                )
+            await course_queries_utils.archive_children(db, course_id=course_id)
 
         await db.execute(
-            update(Course).where(Course.id == course.id).values(
-                **update_values
-            )
+            update(Course).where(Course.id == course.id).values(**update_values)
         )
 
         await db.commit()
@@ -258,7 +253,7 @@ async def get_courses(
         print(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server Error"
+            detail="Server Error",
         )
 
 
@@ -311,15 +306,8 @@ async def get_teacher_courses(
         print(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server Error"
+            detail="Server Error",
         )
-
-
-# @router.get("/{couse_id}", response_model=SCourseResponse)
-# async def get_course(
-#     course: Course = Depends(get_authorized_course)
-# ):
-#     return course
 
 
 @router.get("/archived/", response_model=list[SArchivedCourseResponse])
@@ -374,16 +362,13 @@ async def get_archived_content_tree(
             root_modules = [
                 m
                 for m in archived_modules
-                
                 if m.parent_module_id is None
                 or m.parent_module_id not in module_map
             ]
 
             for module in root_modules:
                 module_node = build_archived_module_tree(
-                    module,
-                    module_map,
-                    course
+                    module, module_map, course
                 )
                 course_data.modules.append(module_node)
 
@@ -409,13 +394,13 @@ async def get_non_archived_courses_with_archived_content(
     db: AsyncSession, current_user: User
 ) -> List[Course]:
     archived_modules_subquery = exists().where(
-        (Module.course_id == Course.id) &
-        (Module.status == ObjectStatus.archived)
+        (Module.course_id == Course.id)
+        & (Module.status == ObjectStatus.archived)
     )
 
     archived_lessons_subquery = exists().where(
-        (Lesson.course_id == Course.id) &
-        (Lesson.status == ObjectStatus.archived)
+        (Lesson.course_id == Course.id)
+        & (Lesson.status == ObjectStatus.archived)
     )
 
     course_ids_query = (

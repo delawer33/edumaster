@@ -22,28 +22,27 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     first_name = Column(String(50), nullable=True)
     last_name = Column(String(50), nullable=True)
-    role = Column(Enum(UserRole, name="user_role_enum"), default=UserRole.student, server_default="student", nullable=False)
+    role = Column(
+        Enum(UserRole, name="user_role_enum"),
+        default=UserRole.student,
+        server_default="student",
+        nullable=False,
+    )
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    courses = relationship("Course", back_populates="students", secondary="user_course")
-
-    purchases = relationship(
-        "CoursePurchase",
-        back_populates="user"
+    courses = relationship(
+        "Course", back_populates="students", secondary="user_course"
     )
 
-    payments = relationship(
-        "PaymentTransaction",
-        back_populates="user"
-    )
+    purchases = relationship("CoursePurchase", back_populates="user")
+
+    payments = relationship("PaymentTransaction", back_populates="user")
 
     files = relationship("File", back_populates="owner")
 
     refresh_tokens = relationship(
-        "RefreshToken",
-        back_populates="user",
-        cascade="all, delete-orphan"
+        "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self):

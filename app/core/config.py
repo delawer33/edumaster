@@ -5,6 +5,7 @@ from pydantic import SecretStr, Field
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
 class DBSettings(BaseSettings):
     name: str
     user: str
@@ -16,6 +17,7 @@ class DBSettings(BaseSettings):
     model_config = SettingsConfigDict(
         extra="forbid",
     )
+
 
 class MinioSettings(BaseSettings):
     user: str
@@ -30,6 +32,7 @@ class MinioSettings(BaseSettings):
         extra="forbid",
     )
 
+
 class Settings(BaseSettings):
     app_name: str = "EduMaster"
     debug: bool = False
@@ -42,5 +45,5 @@ class Settings(BaseSettings):
         env_file=os.path.join(BASE_DIR, ".env"),
         env_file_encoding="utf-8",
         extra="forbid",
-        env_nested_delimiter="__"
+        env_nested_delimiter="__",
     )

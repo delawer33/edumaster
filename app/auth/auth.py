@@ -10,7 +10,10 @@ from sqlalchemy.orm import selectinload
 from app.db import RefreshToken
 from app.core.settings import get_auth_data
 from app.dao.user import UserDAO
-from app.core.settings import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+from app.core.settings import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -25,13 +28,13 @@ def verify_password(plain_pwd: str, hashed_pwd: str) -> bool:
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
     to_encode.update({"exp": expire})
     auth_data = get_auth_data()
     encode_jwt = jwt.encode(
-        to_encode, 
-        auth_data["secret_key"], 
-        algorithm=auth_data["algorithm"]
+        to_encode, auth_data["secret_key"], algorithm=auth_data["algorithm"]
     )
     return encode_jwt
 
@@ -40,17 +43,11 @@ def create_refresh_token():
     return secrets.token_urlsafe(64)
 
 
-async def save_refresh_token(
-    user_id: int,
-    token: str,
-    db: AsyncSession
-):
-    expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    db_token = RefreshToken(
-        user_id=user_id,
-        token=token,
-        expires_at=expires_at
+async def save_refresh_token(user_id: int, token: str, db: AsyncSession):
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
     )
+    db_token = RefreshToken(user_id=user_id, token=token, expires_at=expires_at)
     db.add(db_token)
     await db.commit()
     await db.refresh(db_token)
@@ -58,15 +55,12 @@ async def save_refresh_token(
     return db_token
 
 
-async def get_user_by_refresh_token(
-    token: str, 
-    db: AsyncSession
-):
+async def get_user_by_refresh_token(token: str, db: AsyncSession):
     result = await db.execute(
         select(RefreshToken)
         .where(
             RefreshToken.token == token,
-            RefreshToken.expires_at > datetime.now(timezone.utc)
+            RefreshToken.expires_at > datetime.now(timezone.utc),
         )
         .options(selectinload(RefreshToken.user))
     )

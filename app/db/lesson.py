@@ -1,6 +1,13 @@
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import Integer, String, Text, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import (
+    Integer,
+    String,
+    Text,
+    ForeignKey,
+    DateTime,
+    Enum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
@@ -64,7 +71,7 @@ class Lesson(Base):
         default=datetime.now(timezone.utc),
         nullable=False,
     )
-    
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=datetime.now(timezone.utc),
@@ -73,12 +80,12 @@ class Lesson(Base):
     )
 
     status: Mapped[ObjectStatus] = mapped_column(
-        Enum(ObjectStatus, name="course_status_enum"), 
+        Enum(ObjectStatus, name="course_status_enum"),
         nullable=False,
         default=ObjectStatus.draft,
-        server_default="draft"
+        server_default="draft",
     )
-    
+
     module = relationship(
         "Module",
         back_populates="lessons",
@@ -90,12 +97,9 @@ class Lesson(Base):
     )
 
     blocks = relationship(
-        "LessonBlock",
-        back_populates="lesson",
-        cascade="all, delete-orphan"
+        "LessonBlock", back_populates="lesson", cascade="all, delete-orphan"
     )
-    
-    
+
     def __repr__(self) -> str:
         return f"Lesson(id={self.id}, title={self.title}), \
             order={self.order}, module_id={self.module_id}"
@@ -121,7 +125,7 @@ class LessonBlock(Base):
         nullable=False,
         default=0,
     )
-    
+
     type: Mapped[LessonBlockType] = mapped_column(
         Enum(LessonBlockType),
         nullable=False,
@@ -136,8 +140,7 @@ class LessonBlock(Base):
         "Lesson",
         back_populates="blocks",
     )
-    
+
     def __repr__(self) -> str:
         return f"LessonBlock(id={self.id}, lesson_id={self.lesson_id}), \
             order={self.order}, type={self.type}"
-    

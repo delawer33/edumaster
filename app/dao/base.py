@@ -117,7 +117,12 @@ class BaseDAO:
             async with session.begin():
                 query = (
                     sqlalchemy_update(cls.model)
-                    .where(*[getattr(cls.model, k) == v for k, v in filter_by.items()])
+                    .where(
+                        *[
+                            getattr(cls.model, k) == v
+                            for k, v in filter_by.items()
+                        ]
+                    )
                     .values(**values)
                     .execution_options(synchronize_session="fetch")
                 )
@@ -143,7 +148,9 @@ class BaseDAO:
         """
         if delete_all is False:
             if not filter_by:
-                raise ValueError("Необходимо указать хотя бы один параметр для удаления.")
+                raise ValueError(
+                    "Необходимо указать хотя бы один параметр для удаления."
+                )
 
         async with async_session_maker() as session:
             async with session.begin():

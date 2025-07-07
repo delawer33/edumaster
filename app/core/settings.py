@@ -1,7 +1,9 @@
 import os
 
 from .config import Settings
+
 settings = Settings()
+
 
 class _NoArg:
     """A sentinel value to indicate that a parameter was not given"""
@@ -41,10 +43,11 @@ MINIO_BUCKET = settings.minio_settings.bucket
 MINIO_HOST = settings.minio_settings.host
 MINIO_PORT = settings.minio_settings.port
 
-    
+
 # JWT
-ACCESS_TOKEN_EXPIRE_MINUTES = 1 * 24 * 60 # 1 день
-REFRESH_TOKEN_EXPIRE_DAYS = 30 # 30 дней
+ACCESS_TOKEN_EXPIRE_MINUTES = 1 * 24 * 60  # 1 день
+REFRESH_TOKEN_EXPIRE_DAYS = 30  # 30 дней
+
 
 def get_auth_data():
     return {"secret_key": settings.secret_key, "algorithm": settings.algorithm}

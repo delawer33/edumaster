@@ -44,21 +44,21 @@ class Module(Base):
         nullable=True,
     )
     status: Mapped[ObjectStatus] = mapped_column(
-        Enum(ObjectStatus, name="course_status_enum"), 
+        Enum(ObjectStatus, name="course_status_enum"),
         nullable=False,
         default=ObjectStatus.draft,
-        server_default="draft"
+        server_default="draft",
     )
     content_type: Mapped[ModuleContentType] = mapped_column(
-        Enum(ModuleContentType, name="content_type_enum"), 
+        Enum(ModuleContentType, name="content_type_enum"),
         default=ModuleContentType.empty,
-        nullable=False
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -77,9 +77,9 @@ class Module(Base):
         back_populates="parent",
         cascade="all, delete-orphan",
         lazy="select",
-        order_by="Module.order"
+        order_by="Module.order",
     )
-    
+
     parent: Mapped[Optional["Module"]] = relationship(
         "Module",
         back_populates="submodules",
@@ -101,7 +101,7 @@ class Module(Base):
             raise ValueError("Parent module contains lessons")
         self.content_type = "modules"
         return module
-    
+
     @validates("lessons")
     def validate_lessons(self, key, lesson):
         if self.content_type == "modules":

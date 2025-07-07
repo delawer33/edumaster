@@ -36,8 +36,10 @@ class SModuleResponse(SModuleBase):
     # lessons: List[LessonResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
+
 class SModuleTreeResponse(SModuleResponse):
     pass
+
 
 class SArchivedModuleResponse(BaseModel):
     id: int
@@ -45,6 +47,6 @@ class SArchivedModuleResponse(BaseModel):
     # archived_at: datetime
     type: str = "module"
     status: ObjectStatus
-    children: list['SArchivedModuleResponse'] = []
-    lessons: list['SArchivedLessonResponse'] = []
+    children: list["SArchivedModuleResponse"] = []
+    lessons: list["SArchivedLessonResponse"] = []
     model_config = ConfigDict(from_attributes=True)

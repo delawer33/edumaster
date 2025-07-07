@@ -7,10 +7,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from minio import Minio
 
 from app.schemas import (
-    SModuleCreate,
-    SModuleResponse,
-    SModuleTreeResponse,
-    SModuleUpdate,
     SLessonResponse,
     SLessonFullReponse,
     SLessonCreate,
@@ -18,7 +14,6 @@ from app.schemas import (
     SLessonBlockResponse,
     SLessonBlockCreate,
     SLessonBlockPatch,
-    build_module_tree_response,
 )
 
 from app.helpers import obj_exist_check
@@ -26,7 +21,6 @@ from app.core import settings
 from app.db import (
     User,
     get_async_db_session,
-    Course,
     Module,
     ObjectStatus,
     Lesson,
@@ -38,7 +32,6 @@ from app.dependencies.user import get_current_user
 from app.policies import CoursePolicy
 from app.helpers.module_lesson import get_max_order, EntityType
 from app.dependencies.minio import get_minio_client
-
 
 router = APIRouter(prefix="/course", tags=["Lesson"])
 
@@ -55,10 +48,11 @@ async def create_lesson(
     module_id = data.get("module_id")
 
     course = await obj_exist_check.course_exists(course_id, db)
-    # await CoursePolicy.check_single_course_access(course, current_user)
 
     if not module_id:
-        await CoursePolicy.check_resource_access(db, current_user, course, "write")
+        await CoursePolicy.check_resource_access(
+            db, current_user, course, "write"
+        )
 
         modules_in_course = await db.execute(
             select(Module).where(Module.course_id == course_id)
@@ -70,12 +64,16 @@ async def create_lesson(
                 detail="Курс может содержать только модули либо только уроки",
             )
 
-        max_order = await get_max_order(db, EntityType.LESSON, course_id=course_id)
+        max_order = await get_max_order(
+            db, EntityType.LESSON, course_id=course_id
+        )
 
     else:
         module = await obj_exist_check.module_exists(module_id, db)
 
-        await CoursePolicy.check_resource_access(db, current_user, module, "write", course)
+        await CoursePolicy.check_resource_access(
+            db, current_user, module, "write", course
+        )
 
         if module.content_type == ModuleContentType.modules:
             raise HTTPException(
@@ -91,7 +89,10 @@ async def create_lesson(
 
     try:
         lesson = Lesson(
-            course_id=course_id, status=ObjectStatus.draft, order=max_order, **data
+            course_id=course_id,
+            status=ObjectStatus.draft,
+            order=max_order,
+            **data
         )
 
         if module_id:
@@ -126,14 +127,10 @@ async def create_lesson_block(
         raise HTTPException(404, "Lesson not found")
 
     course = await obj_exist_check.course_exists(course_id, db)
-    # try:
-    #     module = await obj_exist_check.module_exists(module_id, db)
-    # except HTTPException:
-    #     module = None
-    # except Exception as e:
-    #     raise e
 
-    await CoursePolicy.check_resource_access(db, current_user, lesson, "write", course)
+    await CoursePolicy.check_resource_access(
+        db, current_user, lesson, "write", course
+    )
 
     if block_data.type == LessonBlockType.TEXT:
         if not block_data.content.text:
@@ -157,7 +154,9 @@ async def create_lesson_block(
 
         content_value = str(block_data.content.object_name)
 
-    max_order = await get_max_order(db, EntityType.LESSON_BLOCK, lesson_id=lesson_id)
+    max_order = await get_max_order(
+        db, EntityType.LESSON_BLOCK, lesson_id=lesson_id
+    )
 
     block = LessonBlock(
         lesson_id=lesson_id,
@@ -173,7 +172,9 @@ async def create_lesson_block(
     return block
 
 
-@router.get("/{course_id}/lesson/{lesson_id}", response_model=SLessonFullReponse)
+@router.get(
+    "/{course_id}/lesson/{lesson_id}", response_model=SLessonFullReponse
+)
 async def get_lesson(
     course_id: int,
     lesson_id: int,
@@ -185,7 +186,9 @@ async def get_lesson(
     course = await obj_exist_check.course_exists(course_id, db)
     lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
-    await CoursePolicy.check_resource_access(db, current_user, lesson, "read", course)
+    await CoursePolicy.check_resource_access(
+        db, current_user, lesson, "read", course
+    )
 
     for block in lesson.blocks:
         if block.type in [
@@ -199,11 +202,12 @@ async def get_lesson(
                     object_name = block.content
 
                     presigned_url = minio_client.presigned_get_object(
-                        settings.MINIO_BUCKET, object_name, expires=timedelta(hours=1)
+                        settings.MINIO_BUCKET,
+                        object_name,
+                        expires=timedelta(hours=1),
                     )
                     block.content = presigned_url
                 except Exception as e:
-                    # logger.error(f"Error generating presigned URL: {str(e)}")
                     print(e)
                     block.content = None
 
@@ -249,7 +253,6 @@ async def patch_lesson(
             )
         await CoursePolicy.check_module_belongs_course(new_module, course)
 
-        # Если урок опубликован, а модуль, в который его перемещают - в драфте
         if (
             data.get("status") == ObjectStatus.published
             and new_module.status == ObjectStatus.draft
@@ -309,7 +312,9 @@ async def patch_lesson_block(
     lesson = await obj_exist_check.lesson_exists(lesson_id, db)
     block = await obj_exist_check.lesson_block_exists(block_id, db)
 
-    await CoursePolicy.check_resource_access(db, current_user, lesson, "write", course)
+    await CoursePolicy.check_resource_access(
+        db, current_user, lesson, "write", course
+    )
 
     data = block_data.model_dump(exclude_unset=True)
 
@@ -323,7 +328,6 @@ async def patch_lesson_block(
         return block
 
     except Exception as e:
-        raise e
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -339,7 +343,9 @@ async def delete_lesson(
     course = await obj_exist_check.course_exists(course_id, db)
     lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
-    await CoursePolicy.check_resource_access(db, current_user, lesson, "write", course)
+    await CoursePolicy.check_resource_access(
+        db, current_user, lesson, "write", course
+    )
 
     try:
         await db.delete(lesson)
@@ -347,12 +353,10 @@ async def delete_lesson(
 
     except SQLAlchemyError as e:
         await db.rollback()
-        # logger.error(f"DB error deleting lesson {lesson_id}: {str(e)}")
         raise HTTPException(500, "Ошибка базы данных")
 
     except Exception as e:
         await db.rollback()
-        # logger.critical(f"Unexpected error: {traceback.format_exc()}")
         raise HTTPException(500, "Internal server error")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

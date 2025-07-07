@@ -8,7 +8,7 @@ class FileCreateResponse(BaseModel):
     original_name: str
     url: str
     uploaded_at: datetime
-    
+
 
 class LessonBlockCreate(BaseModel):
     lesson_id: int

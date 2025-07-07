@@ -9,17 +9,15 @@ class PaymentRepository:
         self.db = db
 
     async def create_transaction(
-            self,
-            payment_data: SCoursePaymentRequest,
-            user_id: int
-            ) -> PaymentTransaction:
+        self, payment_data: SCoursePaymentRequest, user_id: int
+    ) -> PaymentTransaction:
         transaction = PaymentTransaction(
             course_id=payment_data.course_id,
             user_id=user_id,
             currency=payment_data.currency,
             card_token=payment_data.card_token,
             status="success",
-            message="Тестовый платеж (заглушка)"
+            message="Тестовый платеж (заглушка)",
         )
 
         self.db.add(transaction)
@@ -28,9 +26,8 @@ class PaymentRepository:
         return transaction
 
     async def get_transaction(
-            self,
-            transaction_id: int
-            ) -> PaymentTransaction | None:
+        self, transaction_id: int
+    ) -> PaymentTransaction | None:
         stmt = select(PaymentTransaction).where(
             PaymentTransaction.id == transaction_id
         )

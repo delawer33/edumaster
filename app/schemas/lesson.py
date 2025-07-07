@@ -10,6 +10,7 @@ class SLessonBase(BaseModel):
     summary: str
     duration: int
 
+
 class SLessonResponse(SLessonBase):
     id: int
     order: int
@@ -18,13 +19,16 @@ class SLessonResponse(SLessonBase):
     created_at: datetime
     updated_at: datetime
 
+
 class SLessonFullReponse(SLessonResponse):
     blocks: list[SLessonBlockResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
+
 class SLessonCreate(SLessonBase):
     module_id: int | None = None
     model_config = ConfigDict(extra="forbid")
+
 
 class SLessonUpdate(BaseModel):
     title: str | None = None
@@ -33,6 +37,7 @@ class SLessonUpdate(BaseModel):
     module_id: int | None = None
     status: ObjectStatus | None = None
     model_config = ConfigDict(extra="forbid")
+
 
 class SArchivedLessonResponse(BaseModel):
     id: int

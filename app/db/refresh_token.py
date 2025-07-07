@@ -5,9 +5,10 @@ from sqlalchemy.sql import func
 
 from .base import Base
 
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
-    
+
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     token: Mapped[str] = mapped_column(String(512), unique=True)
@@ -15,7 +16,7 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
-    
+
     user = relationship("User", back_populates="refresh_tokens")
