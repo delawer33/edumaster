@@ -92,7 +92,7 @@ class Module(Base):
         back_populates="module",
         cascade="all, delete-orphan",
         order_by="Lesson.order",
-        lazy="select",
+        lazy="raise",
     )
 
     @validates("submodules")

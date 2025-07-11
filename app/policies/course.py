@@ -93,8 +93,6 @@ class CoursePolicy:
         action: str,  # "read" или "write"
         preloaded_course: Course | None = None,
     ):
-        if user.role == UserRole.admin:
-            return True
 
         course = None
         module = None
@@ -115,6 +113,9 @@ class CoursePolicy:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Курс не найден"
             )
+
+        if user.role == UserRole.admin:
+            return True
 
         is_owner = user.role == UserRole.teacher and course.owner_id == user.id
 

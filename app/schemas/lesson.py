@@ -7,8 +7,8 @@ from app.db import ObjectStatus
 
 class SLessonBase(BaseModel):
     title: str
-    summary: str
-    duration: int
+    summary: str | None
+    duration: int | None
 
 
 class SLessonResponse(SLessonBase):

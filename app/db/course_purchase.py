@@ -1,7 +1,7 @@
 from sqlalchemy import Integer, ForeignKey
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
-from app.db import Base, aymentTransaction
+from app.db import Base, PaymentTransaction
 
 
 class CoursePurchase(Base):

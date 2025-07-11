@@ -39,7 +39,7 @@ class Course(Base):
         "Module",
         back_populates="course",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
     )
 
     lessons = relationship(

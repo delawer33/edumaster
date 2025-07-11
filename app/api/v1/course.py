@@ -48,7 +48,6 @@ async def get_course_content(
 ):
 
     course = await obj_exist_check.course_exists(course_id, db)
-
     await CoursePolicy.check_resource_access(db, current_user, course, "read")
 
     is_admin = current_user.role == UserRole.admin
@@ -129,16 +128,16 @@ async def create_course(
     db: AsyncSession = Depends(get_async_db_session),
     current_user=Depends(get_current_user_teacher),
 ):
-    async with db.begin():
-        new_course = Course(
-            **course_data.model_dump(),
-            status=ObjectStatus.draft,
-            owner_id=current_user.id,
-        )
+    new_course = Course(
+        **course_data.model_dump(),
+        status=ObjectStatus.draft,
+        owner_id=current_user.id,
+    )
 
-        db.add(new_course)
-        await db.flush()
-        await db.refresh(new_course)
+    db.add(new_course)
+    await db.flush()
+    await db.refresh(new_course)
+    await db.commit()
 
     return new_course
 
@@ -155,7 +154,7 @@ async def patch_course(
         course = await obj_exist_check.course_exists(course_id, db)
 
         await CoursePolicy.check_resource_access(
-            db, current_user, course, "read"
+            db, current_user, course, "write"
         )
 
         update_values = update_data.model_dump(exclude_unset=True)
@@ -163,7 +162,6 @@ async def patch_course(
         is_archiving = update_values.get("status") == ObjectStatus.archived
 
         if is_archiving and course.status != ObjectStatus.archived:
-            print("!!!")
             await course_queries_utils.archive_children(db, course_id=course_id)
 
         await db.execute(
@@ -187,7 +185,11 @@ async def patch_course(
             detail="Ошибка базы данных",
         )
 
+    except HTTPException as e:
+        raise e
+
     except Exception as e:
+        print(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -249,6 +251,7 @@ async def get_courses(
 
     except HTTPException as he:
         raise he
+
     except Exception as e:
         print(e)
         raise HTTPException(
@@ -340,6 +343,7 @@ async def get_archived_content_tree(
 
     response = []
     for course in all_courses:
+
         course_data = SArchivedCourseResponse(
             id=course.id,
             title=course.title,
@@ -425,11 +429,13 @@ async def get_non_archived_courses_with_archived_content(
         select(Course)
         .where(Course.id.in_(course_ids))
         .options(
+            selectinload(Course.lessons),
             selectinload(Course.modules).selectinload(Module.submodules),
             selectinload(Course.modules).selectinload(Module.lessons),
-            selectinload(Course.lessons),
         )
     )
 
     result = await db.execute(courses_query)
-    return result.scalars().all()
+    courses = result.scalars().all()
+
+    return courses
