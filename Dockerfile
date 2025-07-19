@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python3", "-m", "app.main"]
+# CMD ["python3", "-m", "app.main"]

@@ -6,7 +6,7 @@ from datetime import datetime
 class FileCreateResponse(BaseModel):
     id: int
     original_name: str
-    url: str
+    object_name: str
     uploaded_at: datetime
 
 

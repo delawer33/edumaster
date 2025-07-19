@@ -43,51 +43,49 @@ async def create_lesson(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
-
-    data = lesson_data.model_dump()
-    module_id = data.get("module_id")
-
-    course = await obj_exist_check.course_exists(course_id, db)
-
-    if not module_id:
-        await CoursePolicy.check_resource_access(
-            db, current_user, course, "write"
-        )
-
-        modules_in_course = await db.execute(
-            select(Module).where(Module.course_id == course_id)
-        )
-
-        if modules_in_course.first() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Курс может содержать только модули либо только уроки",
-            )
-
-        max_order = await get_max_order(
-            db, EntityType.LESSON, course_id=course_id
-        )
-
-    else:
-        module = await obj_exist_check.module_exists(module_id, db)
-
-        await CoursePolicy.check_resource_access(
-            db, current_user, module, "write", course
-        )
-
-        if module.content_type == ModuleContentType.modules:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Данный родительский модуль может содержать только курсы",
-            )
-
-        module.content_type = ModuleContentType.lessons
-
-        max_order = await get_max_order(
-            db, EntityType.LESSON, parent_module_id=module.id
-        )
-
     try:
+        course = await obj_exist_check.course_exists(course_id, db)
+        data = lesson_data.model_dump()
+        module_id = data.get("module_id")
+
+        if not module_id:
+            await CoursePolicy.check_resource_access(
+                db, current_user, course, "write"
+            )
+
+            modules_in_course = await db.execute(
+                select(Module).where(Module.course_id == course_id)
+            )
+
+            if modules_in_course.first() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Курс может содержать только модули либо только уроки",
+                )
+
+            max_order = await get_max_order(
+                db, EntityType.LESSON, course_id=course_id
+            )
+
+        else:
+            module = await obj_exist_check.module_exists(module_id, db)
+
+            await CoursePolicy.check_resource_access(
+                db, current_user, module, "write", course
+            )
+
+            if module.content_type == ModuleContentType.modules:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Данный родительский модуль может содержать только курсы",
+                )
+
+            module.content_type = ModuleContentType.lessons
+
+            max_order = await get_max_order(
+                db, EntityType.LESSON, parent_module_id=module.id
+            )
+
         lesson = Lesson(
             course_id=course_id,
             status=ObjectStatus.draft,
@@ -103,9 +101,19 @@ async def create_lesson(
 
         return lesson
 
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
     except Exception as e:
         await db.rollback()
-        print(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -121,55 +129,68 @@ async def create_lesson_block(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    lesson = await db.get(Lesson, lesson_id)
+    try:
+        lesson = await obj_exist_check.lesson_exists(lesson_id, db)
+        course = await obj_exist_check.course_exists(course_id, db)
 
-    if not lesson:
-        raise HTTPException(404, "Lesson not found")
+        await CoursePolicy.check_resource_access(
+            db, current_user, lesson, "write", course
+        )
 
-    course = await obj_exist_check.course_exists(course_id, db)
+        if block_data.type == LessonBlockType.TEXT:
+            if not block_data.content.text:
+                raise HTTPException(400, "Text content required")
+            content_value = block_data.content.text
 
-    await CoursePolicy.check_resource_access(
-        db, current_user, lesson, "write", course
-    )
+        elif block_data.type in [LessonBlockType.LINK, LessonBlockType.QUIZ]:
+            if not block_data.content.url:
+                raise HTTPException(400, "URL required")
+            content_value = str(block_data.content.url)
 
-    if block_data.type == LessonBlockType.TEXT:
-        if not block_data.content.text:
-            raise HTTPException(400, "Text content required")
-        content_value = block_data.content.text
+        elif block_data.type in [
+            LessonBlockType.VIDEO,
+            LessonBlockType.AUDIO,
+            LessonBlockType.IMAGE,
+            LessonBlockType.PDF,
+        ]:
+            if not block_data.content.object_name:
+                raise HTTPException(400, "File URL required")
 
-    elif block_data.type in [LessonBlockType.LINK, LessonBlockType.QUIZ]:
-        if not block_data.content.url:
-            raise HTTPException(400, "URL required")
-        content_value = str(block_data.content.url)
+            content_value = str(block_data.content.object_name)
 
-    elif block_data.type in [
-        LessonBlockType.VIDEO,
-        LessonBlockType.AUDIO,
-        LessonBlockType.IMAGE,
-        LessonBlockType.PDF,
-    ]:
-        if not block_data.content.object_name:
-            raise HTTPException(400, "File URL required")
-        # TODO: check if url is minio url
+        max_order = await get_max_order(
+            db, EntityType.LESSON_BLOCK, lesson_id=lesson_id
+        )
 
-        content_value = str(block_data.content.object_name)
+        block = LessonBlock(
+            lesson_id=lesson_id,
+            order=max_order,
+            type=block_data.type,
+            content=content_value,
+        )
 
-    max_order = await get_max_order(
-        db, EntityType.LESSON_BLOCK, lesson_id=lesson_id
-    )
+        db.add(block)
+        await db.commit()
+        await db.refresh(block)
 
-    block = LessonBlock(
-        lesson_id=lesson_id,
-        order=max_order,
-        type=block_data.type,
-        content=content_value,
-    )
+        return block
 
-    db.add(block)
-    await db.commit()
-    await db.refresh(block)
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
 
-    return block
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @router.get(
@@ -182,38 +203,53 @@ async def get_lesson(
     current_user: User = Depends(get_current_user),
     minio_client: Minio = Depends(get_minio_client),
 ):
+    try:
+        course = await obj_exist_check.course_exists(course_id, db)
+        lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
-    course = await obj_exist_check.course_exists(course_id, db)
-    lesson = await obj_exist_check.lesson_exists(lesson_id, db)
+        await CoursePolicy.check_resource_access(
+            db, current_user, lesson, "read", course
+        )
+        for block in lesson.blocks:
+            if block.type in [
+                LessonBlockType.VIDEO,
+                LessonBlockType.AUDIO,
+                LessonBlockType.IMAGE,
+                LessonBlockType.PDF,
+            ]:
+                if block.content:
+                    try:
+                        object_name = block.content
 
-    await CoursePolicy.check_resource_access(
-        db, current_user, lesson, "read", course
-    )
+                        presigned_url = minio_client.presigned_get_object(
+                            settings.MINIO_BUCKET,
+                            object_name,
+                            expires=timedelta(hours=1),
+                        )
+                        block.content = presigned_url
+                    except Exception as e:
+                        block.content = None
 
-    for block in lesson.blocks:
-        if block.type in [
-            LessonBlockType.VIDEO,
-            LessonBlockType.AUDIO,
-            LessonBlockType.IMAGE,
-            LessonBlockType.PDF,
-        ]:
-            if block.content:
-                try:
-                    object_name = block.content
+        lesson.blocks.sort(key=lambda x: x.order)
 
-                    presigned_url = minio_client.presigned_get_object(
-                        settings.MINIO_BUCKET,
-                        object_name,
-                        expires=timedelta(hours=1),
-                    )
-                    block.content = presigned_url
-                except Exception as e:
-                    print(e)
-                    block.content = None
+        return lesson
 
-    lesson.blocks.sort(key=lambda x: x.order)
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
 
-    return lesson
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @router.patch("/{course_id}/lesson/{lesson_id}", response_model=SLessonResponse)
@@ -224,64 +260,63 @@ async def patch_lesson(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    data = lesson_data.model_dump(exclude_unset=True)
+    try:
+        course = await obj_exist_check.course_exists(course_id, db)
+        lesson = await obj_exist_check.lesson_exists(lesson_id, db)
 
-    module_id = data.get("module_id")
-
-    course = await obj_exist_check.course_exists(course_id, db)
-    lesson = await obj_exist_check.lesson_exists(lesson_id, db)
-
-    await CoursePolicy.check_resource_access(
-        db, current_user, lesson.module, "write", course
-    )
-
-    if (
-        data.get("status") == ObjectStatus.published
-        and lesson.module.status == ObjectStatus.draft
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Нельзя опубликовать урок, т.к. неопубликован модуль",
+        await CoursePolicy.check_resource_access(
+            db, current_user, lesson.module, "write", course
         )
 
-    if module_id:
-        new_module = await obj_exist_check.module_exists(module_id, db)
-        if new_module.status == ObjectStatus.archived:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Модуль заархивирован",
-            )
-        await CoursePolicy.check_module_belongs_course(new_module, course)
+        data = lesson_data.model_dump(exclude_unset=True)
+        module_id = data.get("module_id")
 
         if (
             data.get("status") == ObjectStatus.published
-            and new_module.status == ObjectStatus.draft
+            and lesson.module.status == ObjectStatus.draft
         ):
-
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Нельзя переместить опубликованный урок в неопубликованный модуль",
+                detail="Нельзя опубликовать урок, т.к. неопубликован модуль",
             )
 
-        if lesson.module_id is not None:
-            module = await db.execute(
-                select(Module)
-                .where(Module.id == lesson.module_id)
-                .options(selectinload(Module.lessons))
-            )
-            module = module.scalars().first()
-            if len(module.lessons) == 1:
-                module.content_type = ModuleContentType.empty
+        if module_id:
+            new_module = await obj_exist_check.module_exists(module_id, db)
+            if new_module.status == ObjectStatus.archived:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Модуль заархивирован",
+                )
+            await CoursePolicy.check_module_belongs_course(new_module, course)
 
-        if new_module.content_type == ModuleContentType.modules:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Модуль может состоять только из модулей, либо только из уроков",
-            )
-        elif new_module.content_type == ModuleContentType.empty:
-            new_module.content_type = ModuleContentType.lessons
+            if (
+                data.get("status") == ObjectStatus.published
+                and new_module.status == ObjectStatus.draft
+            ):
 
-    try:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Нельзя переместить опубликованный урок в неопубликованный модуль",
+                )
+
+            if lesson.module_id is not None:
+                module = await db.execute(
+                    select(Module)
+                    .where(Module.id == lesson.module_id)
+                    .options(selectinload(Module.lessons))
+                )
+                module = module.scalars().first()
+                if len(module.lessons) == 1:
+                    module.content_type = ModuleContentType.empty
+
+            if new_module.content_type == ModuleContentType.modules:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Модуль может состоять только из модулей, либо только из уроков",
+                )
+            elif new_module.content_type == ModuleContentType.empty:
+                new_module.content_type = ModuleContentType.lessons
+
         for key, value in data.items():
             setattr(lesson, key, value)
 
@@ -290,7 +325,19 @@ async def patch_lesson(
 
         return lesson
 
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
     except Exception as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -308,17 +355,17 @@ async def patch_lesson_block(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db_session),
 ):
-    course = await obj_exist_check.course_exists(course_id, db)
-    lesson = await obj_exist_check.lesson_exists(lesson_id, db)
-    block = await obj_exist_check.lesson_block_exists(block_id, db)
-
-    await CoursePolicy.check_resource_access(
-        db, current_user, lesson, "write", course
-    )
-
-    data = block_data.model_dump(exclude_unset=True)
-
     try:
+        course = await obj_exist_check.course_exists(course_id, db)
+        lesson = await obj_exist_check.lesson_exists(lesson_id, db)
+        block = await obj_exist_check.lesson_block_exists(block_id, db)
+
+        await CoursePolicy.check_resource_access(
+            db, current_user, lesson, "write", course
+        )
+
+        data = block_data.model_dump(exclude_unset=True)
+
         for key, value in data.items():
             setattr(block, key, value)
 
@@ -327,7 +374,15 @@ async def patch_lesson_block(
 
         return block
 
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
     except Exception as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -351,12 +406,17 @@ async def delete_lesson(
         await db.delete(lesson)
         await db.commit()
 
-    except SQLAlchemyError as e:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    except SQLAlchemyError:
         await db.rollback()
-        raise HTTPException(500, "Ошибка базы данных")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
 
     except Exception as e:
         await db.rollback()
-        raise HTTPException(500, "Internal server error")
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )

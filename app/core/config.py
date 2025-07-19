@@ -33,16 +33,34 @@ class MinioSettings(BaseSettings):
     )
 
 
+class RabbitMQSettings(BaseSettings):
+    host: str = "localhost"
+    port: int = 5672
+    user: str
+    password: SecretStr
+
+    model_config = SettingsConfigDict(
+        extra="forbid",
+    )
+
+
 class Settings(BaseSettings):
     app_name: str = "EduMaster"
     debug: bool = False
     db_settings: DBSettings = Field(default_factory=DBSettings)
     minio_settings: MinioSettings = Field(default_factory=MinioSettings)
+    rabbitmq_settings: RabbitMQSettings = Field(
+        default_factory=RabbitMQSettings
+    )
     secret_key: str
     algorithm: str
 
     model_config = SettingsConfigDict(
-        env_file=os.path.join(BASE_DIR, ".env"),
+        env_file=(
+            None
+            if os.getenv("RUNNING_IN_DOCKER") == "true"
+            else os.path.join(BASE_DIR, ".env")
+        ),
         env_file_encoding="utf-8",
         extra="forbid",
         env_nested_delimiter="__",

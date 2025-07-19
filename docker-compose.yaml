@@ -5,10 +5,6 @@ services:
       - ./var/db:/var/lib/postgresql/data
     ports:
       - "5435:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=edumaster
 
   minio:
     image: quay.io/minio/minio
@@ -21,9 +17,23 @@ services:
     environment:
       - MINIO_ROOT_USER=minio
       - MINIO_ROOT_PASSWORD=minio_pwd
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ~/rabbitmq/data:/var/lib/rabbitmq
+      - ~/rabbitmq/logs:/var/log/rabbitmq
+    depends_on:
+      - postgres
+
   app:
     build: .
     command: python3 -m app.main
+    env_file:
+      - ./.env
     ports:
       - "8000:8000"
     volumes:
@@ -31,3 +41,19 @@ services:
     depends_on:
       - postgres
       - minio
+    environment:
+      - RUNNING_IN_DOCKER=true
+  
+  payment_consumer:
+    build: .
+    command: python3 -m app.consumers.payment_consumer
+    env_file:
+      - ./.env
+    volumes:
+      - .:/code
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      - RUNNING_IN_DOCKER=true
+      - PYTHONUNBUFFERED=1

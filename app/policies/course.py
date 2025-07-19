@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy import or_, and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import (
@@ -96,7 +97,6 @@ class CoursePolicy:
 
         course = None
         module = None
-        print(type(resource))
 
         if isinstance(resource, Course):
             course = resource
@@ -155,14 +155,22 @@ class CoursePolicy:
         if action == "read":
             if is_owner or user.role == UserRole.admin:
                 return True
+            try:
+                stmt = select(CoursePurchase).where(
+                    CoursePurchase.user_id == user.id
+                )
 
-            stmt = select(CoursePurchase).where(
-                CoursePurchase.user_id == user.id
-            )
+                cp = await db.execute(stmt)
 
-            cp = await db.execute(stmt)
+                cp = cp.scalars().first()
 
-            cp = cp.scalars().first()
+            except SQLAlchemyError:
+                await db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Ошибка базы данных",
+                )
+
             if cp is None:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

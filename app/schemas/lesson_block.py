@@ -18,6 +18,30 @@ class UrlContent(BaseModel):
 class ObjectContent(BaseModel):
     object_name: str
 
+    @model_validator(mode="after")
+    def validate_minio_object_name_format(self):
+        self.object_name = self.object_name.strip()
+
+        if not self.object_name:
+            raise ValueError(
+                "Имя объекта Minio (object_name) не может быть пустым после удаления пробелов."
+            )
+
+        if "//" in self.object_name:
+            raise ValueError(
+                "Имя объекта Minio не может содержать последовательность '//'."
+            )
+
+        if self.object_name.startswith("/"):
+            raise ValueError(
+                "Имя объекта Minio не может начинаться с символа '/'."
+            )
+
+        if ".." in self.object_name:
+            raise ValueError("Имя объекта Minio не может содержать '..'.")
+
+        return self
+
 
 class SLessonBlockCreate(BaseModel):
     type: LessonBlockType

@@ -22,6 +22,7 @@ class PaymentTransaction(Base):
     course_id: Mapped[int] = mapped_column(
         ForeignKey("courses.id"), nullable=False
     )
+    payment_intent_id: Mapped[str] = mapped_column(String, nullable=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     status: Mapped[str] = mapped_column(String(20), default="pending")

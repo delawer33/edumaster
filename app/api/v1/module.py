@@ -44,55 +44,74 @@ async def get_module_content(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
+    try:
 
-    course = await obj_exist_check.course_exists(course_id, db)
-    module = await obj_exist_check.module_exists(module_id, db)
+        course = await obj_exist_check.course_exists(course_id, db)
+        module = await obj_exist_check.module_exists(module_id, db)
 
-    await CoursePolicy.check_resource_access(
-        db, current_user, module, "read", course
-    )
+        await CoursePolicy.check_resource_access(
+            db, current_user, module, "read", course
+        )
 
-    all_modules = await db.scalars(
-        select(Module).where(Module.course_id == module.course_id)
-    )
-    flat_modules = all_modules.unique().all()
+        all_modules = await db.scalars(
+            select(Module).where(Module.course_id == module.course_id)
+        )
+        flat_modules = all_modules.unique().all()
 
-    lessons = await db.scalars(
-        select(Lesson)
-        .where(Lesson.course_id == module.course_id)
-        .order_by(Lesson.order)
-    )
-    all_lessons = lessons.unique().all()
+        lessons = await db.scalars(
+            select(Lesson)
+            .where(Lesson.course_id == module.course_id)
+            .order_by(Lesson.order)
+        )
+        all_lessons = lessons.unique().all()
 
-    module_map = {
-        m.id: {"module": m, "children": [], "lessons": []} for m in flat_modules
-    }
-    lessons_by_module = defaultdict(list)
+        module_map = {
+            m.id: {"module": m, "children": [], "lessons": []}
+            for m in flat_modules
+        }
+        lessons_by_module = defaultdict(list)
 
-    for lesson in all_lessons:
-        lessons_by_module[lesson.module_id].append(lesson)
+        for lesson in all_lessons:
+            lessons_by_module[lesson.module_id].append(lesson)
 
-    root_module = None
-    for module_data in flat_modules:
-        node = module_map[module_data.id]
+        root_module = None
+        for module_data in flat_modules:
+            node = module_map[module_data.id]
 
-        node["lessons"] = lessons_by_module.get(module_data.id, [])
+            node["lessons"] = lessons_by_module.get(module_data.id, [])
 
-        if module_data.parent_module_id is None:
-            if module_data.id == module_id:
-                root_module = node
-        else:
-            parent_node = module_map.get(module_data.parent_module_id)
-            if parent_node:
-                parent_node["children"].append(node)
+            if module_data.parent_module_id is None:
+                if module_data.id == module_id:
+                    root_module = node
+            else:
+                parent_node = module_map.get(module_data.parent_module_id)
+                if parent_node:
+                    parent_node["children"].append(node)
 
-    if not root_module:
-        root_module = module_map.get(module_id)
+        if not root_module:
+            root_module = module_map.get(module_id)
 
-    if not root_module:
-        raise HTTPException(404, "Структура модуля не найдена")
+        if not root_module:
+            raise HTTPException(404, "Структура модуля не найдена")
 
-    return build_module_tree_response(root_module)
+        return build_module_tree_response(root_module)
+
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
 
 
 @router.post("/{course_id}/module/", response_model=SModuleResponse)
@@ -102,50 +121,48 @@ async def create_module(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
-
-    data = module_data.model_dump()
-    parent_module_id = data.get("parent_module_id")
-
-    course = await obj_exist_check.course_exists(course_id, db)
-
-    if parent_module_id is None:
-        await CoursePolicy.check_resource_access(
-            db, current_user, course, "write"
-        )
-        lessons_in_course = await db.execute(
-            select(Lesson).where(Lesson.course_id == course_id)
-        )
-
-        if lessons_in_course.first() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Курс может содержать только модули либо только уроки",
-            )
-
-        max_order = await get_max_order(
-            db, EntityType.MODULE, course_id=course_id
-        )
-    else:
-        parent = await obj_exist_check.module_exists(parent_module_id, db)
-
-        await CoursePolicy.check_resource_access(
-            db, current_user, parent, "write", course
-        )
-
-        if parent.content_type == ModuleContentType.lessons:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Данный родительский модуль может содержать только уроки",
-            )
-
-        max_order = await get_max_order(
-            db, EntityType.MODULE, parent_module_id=parent_module_id
-        )
-
-        parent.content_type = ModuleContentType.modules
-
     try:
-        print(parent_module_id)
+        data = module_data.model_dump()
+        parent_module_id = data.get("parent_module_id")
+
+        course = await obj_exist_check.course_exists(course_id, db)
+
+        if parent_module_id is None:
+            await CoursePolicy.check_resource_access(
+                db, current_user, course, "write"
+            )
+            lessons_in_course = await db.execute(
+                select(Lesson).where(Lesson.course_id == course_id)
+            )
+
+            if lessons_in_course.first() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Курс может содержать только модули либо только уроки",
+                )
+
+            max_order = await get_max_order(
+                db, EntityType.MODULE, course_id=course_id
+            )
+        else:
+            parent = await obj_exist_check.module_exists(parent_module_id, db)
+
+            await CoursePolicy.check_resource_access(
+                db, current_user, parent, "write", course
+            )
+
+            if parent.content_type == ModuleContentType.lessons:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Данный родительский модуль может содержать только уроки",
+                )
+
+            max_order = await get_max_order(
+                db, EntityType.MODULE, parent_module_id=parent_module_id
+            )
+
+            parent.content_type = ModuleContentType.modules
+
         module = Module(
             **data,
             course_id=course_id,
@@ -159,13 +176,24 @@ async def create_module(
         await db.commit()
         await db.refresh(module)
 
+        return module
+
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
     except Exception as e:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-
-    return module
 
 
 @router.patch("/{course_id}/module/{module_id}", response_model=SModuleResponse)
@@ -209,14 +237,19 @@ async def patch_module(
 
         return module
 
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка базы данных",
         )
 
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
     except Exception as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
@@ -229,25 +262,42 @@ async def delete_module(
     db: AsyncSession = Depends(get_async_db_session),
     current_user: User = Depends(get_current_user),
 ):
+    try:
+        course = await obj_exist_check.course_exists(course_id, db)
+        module = await obj_exist_check.module_exists(module_id, db)
 
-    course = await obj_exist_check.course_exists(course_id, db)
-    module = await obj_exist_check.module_exists(module_id, db)
+        if module.parent_module_id is not None:
+            parent_module = await db.execute(
+                select(Module)
+                .where(Module.id == module.parent_module_id)
+                .options(selectinload(Module.submodules))
+            )
+            parent_module = parent_module.scalars().first()
+            if len(parent_module.submodules) == 1:
+                parent_module.content_type == ModuleContentType.empty
 
-    if module.parent_module_id is not None:
-        parent_module = await db.execute(
-            select(Module)
-            .where(Module.id == module.parent_module_id)
-            .options(selectinload(Module.submodules))
+        await CoursePolicy.check_resource_access(
+            db, current_user, module, "write", course
         )
-        parent_module = parent_module.scalars().first()
-        if len(parent_module.submodules) == 1:
-            parent_module.content_type == ModuleContentType.empty
 
-    await CoursePolicy.check_resource_access(
-        db, current_user, module, "write", course
-    )
+        await db.delete(module)
+        await db.commit()
 
-    await db.delete(module)
-    await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка базы данных",
+        )
+
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )

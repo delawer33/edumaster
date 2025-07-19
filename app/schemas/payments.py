@@ -10,8 +10,9 @@ class SCoursePaymentRequest(BaseModel):
 
 class SPaymentResponse(BaseModel):
     status: str
-    transaction_id: int
+    payment_intent_id: str
+    transaction_id: int | None = None
     currency: str
     timestamp: datetime
-    message: str
+    message: str | None = None
     course_id: int
