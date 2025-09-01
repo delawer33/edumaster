@@ -11,7 +11,7 @@ class DBSettings(BaseSettings):
     user: str
     password: SecretStr
     host: str = "localhost"
-    port: int = 5435
+    port: int = 5432
     echo: bool = False
 
     model_config = SettingsConfigDict(

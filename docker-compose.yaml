@@ -4,7 +4,12 @@ services:
     volumes:
       - ./var/db:/var/lib/postgresql/data
     ports:
-      - "5435:5432"
+      - "${DB_SETTINGS__PORT:-5435}:5432"
+    environment:
+      - POSTGRES_USER=${DB_SETTINGS__USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_SETTINGS__PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_SETTINGS__DB:-test_db}
+    
 
   minio:
     image: quay.io/minio/minio
@@ -15,19 +20,20 @@ services:
     volumes:
       - ~/minio/data:/data
     environment:
-      - MINIO_ROOT_USER=minio
-      - MINIO_ROOT_PASSWORD=minio_pwd
+      - MINIO_ROOT_USER=${MINIO_SETTINGS__USER:-minio}
+      - MINIO_ROOT_PASSWORD=${MINIO_SETTINGS__PASSWORD:-minio_pwd}
 
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"
+      - "${RABBITMQ_SETTINGS__PORT:-5672}:5672"
       - "15672:15672"
     volumes:
       - ~/rabbitmq/data:/var/lib/rabbitmq
       - ~/rabbitmq/logs:/var/log/rabbitmq
     depends_on:
       - postgres
+
 
   app:
     build: .
@@ -43,6 +49,13 @@ services:
       - minio
     environment:
       - RUNNING_IN_DOCKER=true
+      - DB_SETTINGS__PORT=${DB_SETTINGS__PORT_DOCKER:-5432}
+      - DB_SETTINGS__USER=${DB_SETTINGS__USER:-postgres}
+      - DB_SETTINGS__HOST=${DB_SETTINGS__HOST:-postgres}
+      - DB_SETTINGS__PASSWORD=${DB_SETTINGS__PASSWORD:-postgres}
+      - DB_SETTINGS__NAME=${DB_SETTINGS__NAME:-edumaster}
+      - MINIO_SETTINGS__PORT=9000
+      - RABBITMQ_SETTINGS__PORT=5672
   
   payment_consumer:
     build: .
@@ -57,3 +70,5 @@ services:
     environment:
       - RUNNING_IN_DOCKER=true
       - PYTHONUNBUFFERED=1
+      - RABBITMQ_SETTINGS__PORT=5672
+      
